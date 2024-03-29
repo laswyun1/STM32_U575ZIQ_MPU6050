@@ -35,6 +35,7 @@
 /* USER CODE BEGIN Includes */
 #include "ioif_mpu6050.h"
 #include "ioif_mpu6050_second.h"
+#include "imu_algorithms.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,6 +65,18 @@ static void SystemPower_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
 
+static void InitValueSetting(IMU_FuzzyData_t* imuFuzzyData, IMU_NormData_t* imuNormData, IMU_GaitData_t* imuGaitData, IMU_ThresData_t* imuThresData);
+static void SetInitialAngle(IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, float initialAngle);
+static void GetInitialAngle_IMU(IOIF_6AxisData_t* imu6AxisData, IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, IMU_AttachCase_t imuAttachCase);
+static void GetInitialAngle_IMU2(IOIF_6AxisData2_t* imu6AxisData, IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, IMU_AttachCase_t imuAttachCase);
+static void ResetDataObj(void);
+static void UpdateSensorRawData(IMU_SensorData_t* imuSensorData, IOIF_6AxisData_t* imu6AxisData, IMU_AttachCase_t imuAttachCase);
+static void UpdateSensorRawData2(IMU_SensorData_t* imuSensorData, IOIF_6AxisData2_t* imu6AxisData, IMU_AttachCase_t imuAttachCase);
+static void RunTvcfFilter(IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_FuzzyData_t* imuFuzzyData, float samplingPeriod, IMU_AttachCase_t imuAttachCase);
+static void SetUsedDegVel(IMU_AngleData_t* imuAngleData);
+static int RunIMU(void);
+static int RunTotalIMUAlgorithm(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -71,7 +84,44 @@ static void MPU_Config(void);
 IOIF_6AxisData_t 	mpu6050DataObj1;
 IOIF_6AxisData2_t 	mpu6050DataObj2;
 
-uint32_t totalTime = 0;
+uint32_t codeTime = 0;				// microSecond
+
+uint8_t err1 = 0;
+uint8_t err2 = 0;
+uint32_t errSum1 = 0;
+uint32_t errSum2 = 0;
+uint16_t msTime = 0;
+uint32_t totalElapsedTime = 0;		// Second
+
+
+/* For IMU Algorithms */
+// For 1st IMU - I2C2 //
+IMU_GaitData_t		imuGaitDataObj1;
+IMU_AngleData_t 	imuAngleDataObj1;
+
+static IMU_AttachCase_t ATTACH_CASE_SEL_1;
+
+static IMU_SensorData_t 	imuSensorDataObj1;
+static IMU_FuzzyData_t		imuFuzzyDataObj1;
+static IMU_NormData_t 		imuNormDataObj1;
+static IMU_ThresData_t		imuThresDataObj1;
+
+static float wcDebug1 = 0.0;
+
+
+// For 2nd IMU - I2C3 //
+IMU_GaitData_t		imuGaitDataObj2;
+IMU_AngleData_t 	imuAngleDataObj2;
+
+static IMU_AttachCase_t ATTACH_CASE_SEL_2;
+
+static IMU_SensorData_t 	imuSensorDataObj2;
+static IMU_FuzzyData_t		imuFuzzyDataObj2;
+static IMU_NormData_t 		imuNormDataObj2;
+static IMU_ThresData_t		imuThresDataObj2;
+
+static float wcDebug2 = 0.0;
+
 /* USER CODE END 0 */
 
 /**
@@ -127,6 +177,26 @@ int main(void)
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
   DWT->CYCCNT = 0;
 
+  /* Initialize the IMUs */
+  IOIF_Init6Axis(&hi2c2);
+  IOIF_Init6Axis2(&hi2c3);
+
+  /* For IMU Algorithms */
+  /* Initial Setting for the IMU */
+  ATTACH_CASE_SEL_1 = IMU_LEFT_SAGITAL;
+  ATTACH_CASE_SEL_2 = IMU_LEFT_SAGITAL;
+
+  /* Reset and Initial setting */
+  ResetDataObj();
+  InitValueSetting(&imuFuzzyDataObj1, &imuNormDataObj1, &imuGaitDataObj1, &imuThresDataObj1);
+  InitValueSetting(&imuFuzzyDataObj2, &imuNormDataObj2, &imuGaitDataObj2, &imuThresDataObj2);
+
+  /* Get initial angle at Standing state */
+  GetInitialAngle_IMU(&mpu6050DataObj1, &imuSensorDataObj1, &imuAngleDataObj1, &imuNormDataObj1, ATTACH_CASE_SEL_1);
+  GetInitialAngle_IMU2(&mpu6050DataObj2, &imuSensorDataObj2, &imuAngleDataObj2, &imuNormDataObj2, ATTACH_CASE_SEL_2);
+  /* ------------------------------------------------------------------------------------------------------------------ */
+
+  /* Start the TIMER INTERRUPT */
   HAL_TIM_Base_Start_IT(&htim1);
 
   /* USER CODE END 2 */
@@ -229,24 +299,261 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		DWT->CYCCNT = 0;
 		DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
-		/* Code Start */
-		static uint8_t firstRun = 0;
-		if (firstRun == 0){
-			IOIF_Init6Axis(&hi2c2);
-			IOIF_Init6Axis2(&hi2c3);
 
-			firstRun = 1;
+		/* Choose the Function you want to RUN */
+//		RunIMU();
+		RunTotalIMUAlgorithm();
+		/* ----------------------------------- */
+
+		if (msTime == 1000){
+			msTime = 0;
+			totalElapsedTime++;
 		}
 
-		IOIF_Get6AxisValue(&mpu6050DataObj1);
-		IOIF_Get6AxisValue2(&mpu6050DataObj2);
-
-
 		/* Code End */
-
-		totalTime = DWT->CYCCNT/160;
+		codeTime = DWT->CYCCNT/160;
+		msTime++;
 	}
 }
+
+
+
+/* Private functions */
+
+/* Setting for initial parameters */
+static void InitValueSetting(IMU_FuzzyData_t* imuFuzzyData, IMU_NormData_t* imuNormData, IMU_GaitData_t* imuGaitData, IMU_ThresData_t* imuThresData)
+{
+	imuFuzzyData->wl 				= 0.5;
+	imuFuzzyData->wh 				= 10.0;
+	imuFuzzyData->var[0] 			= 8.0;
+	imuFuzzyData->var[1] 			= 30.0;
+	imuFuzzyData->var[2] 			= 5.8;
+	imuFuzzyData->var[3] 			= 320.0;
+
+	imuNormData->ampDeg 			= 30.0; 	//30
+	imuNormData->ampDegLPF[0]		= 30.0;
+	imuNormData->ampDegLPF[1]		= 30.0;
+
+	imuNormData->ampVel 			= 400.0; 	//400
+	imuNormData->ampVelLPF[0]		= 400.0;
+	imuNormData->ampVelLPF[1]		= 400.0;
+
+	imuGaitData->gaitPeriod 		= 1000;
+	imuGaitData->gaitPhase 			= -100.0;
+	imuGaitData->gaitPhasePre   	= -100.0;
+
+	imuThresData->degThStart		= 12.0;
+	imuThresData->velThStart		= 20.0;
+	imuThresData->degThStop 		= 3.0;
+	imuThresData->velThStop 		= 12.0;
+}
+
+/* Setting for Initial values of "angle" variables after get initial thigh angle */
+static void SetInitialAngle(IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, float initialAngle)
+{
+	imuAngleData->degAccFiltered 	= initialAngle;
+	imuAngleData->degGyrFiltered	= 0.0;
+
+	imuAngleData->degLPF1st[0] 		= initialAngle;
+	imuAngleData->degLPF1st[1] 		= initialAngle;
+	imuAngleData->degLPF2nd[0] 		= initialAngle;
+	imuAngleData->degLPF2nd[1] 		= initialAngle;
+	imuNormData->degOri 	 		= initialAngle;
+}
+
+/*
+ *Function to calculate the initial thigh angle - IMU case
+*/
+static void GetInitialAngle_IMU(IOIF_6AxisData_t* imu6AxisData, IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, IMU_AttachCase_t imuAttachCase)
+{
+	uint8_t tTotalSamples 	= 100;
+	uint8_t tDataCheck_IMU	= 0;
+	uint8_t tRealSamples	= 0;
+	float tAccumulatedAngle = 0.0;
+	float tInitThighAngle	= 0.0;
+	float tImuAngle			= 0.0;
+
+	for (uint8_t i = 1; i <= tTotalSamples; i++) {
+        for (uint16_t j = 0; j < 30000; j++) {
+        	// For delay of DMA reading
+        }
+
+        tDataCheck_IMU = IOIF_Get6AxisValue(imu6AxisData);
+
+        if (tDataCheck_IMU == 0){
+        	imuSensorData->accX[0] = imu6AxisData->accX;
+        	imuSensorData->accY[0] = imu6AxisData->accY;
+        	imuSensorData->gyrZ[0] = imu6AxisData->gyrZ;
+
+            tImuAngle = IMU_AttachCaseSetting(imuSensorData, imuAttachCase);
+            tAccumulatedAngle += tImuAngle;
+
+            tRealSamples++;
+        }
+    }
+
+	tInitThighAngle = tAccumulatedAngle / tRealSamples;
+	imuAngleData->initAngle = tInitThighAngle;
+    SetInitialAngle(imuAngleData, imuNormData, tInitThighAngle);
+}
+
+/*
+ *Function to calculate the initial thigh angle - IMU case
+*/
+static void GetInitialAngle_IMU2(IOIF_6AxisData2_t* imu6AxisData, IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_NormData_t* imuNormData, IMU_AttachCase_t imuAttachCase)
+{
+	uint8_t tTotalSamples 	= 100;
+	uint8_t tDataCheck_IMU	= 0;
+	uint8_t tRealSamples	= 0;
+	float tAccumulatedAngle = 0.0;
+	float tInitThighAngle	= 0.0;
+	float tImuAngle			= 0.0;
+
+	for (uint8_t i = 1; i <= tTotalSamples; i++) {
+        for (uint16_t j = 0; j < 30000; j++) {
+        	// For delay of DMA reading
+        }
+
+        tDataCheck_IMU = IOIF_Get6AxisValue2(imu6AxisData);
+
+        if (tDataCheck_IMU == 0){
+        	imuSensorData->accX[0] = imu6AxisData->accX;
+        	imuSensorData->accY[0] = imu6AxisData->accY;
+        	imuSensorData->gyrZ[0] = imu6AxisData->gyrZ;
+
+            tImuAngle = IMU_AttachCaseSetting(imuSensorData, imuAttachCase);
+            tAccumulatedAngle += tImuAngle;
+
+            tRealSamples++;
+        }
+    }
+
+	tInitThighAngle = tAccumulatedAngle / tRealSamples;
+	imuAngleData->initAngle = tInitThighAngle;
+    SetInitialAngle(imuAngleData, imuNormData, tInitThighAngle);
+}
+
+static void ResetDataObj(void)
+{
+	imuSensorDataObj1 		= 	(IMU_SensorData_t){0};
+	imuFuzzyDataObj1 		= 	(IMU_FuzzyData_t){0};
+	imuAngleDataObj1		=   (IMU_AngleData_t){0};
+	imuNormDataObj1 		= 	(IMU_NormData_t){0};
+	imuGaitDataObj1 		= 	(IMU_GaitData_t){0};
+	imuThresDataObj1 		= 	(IMU_ThresData_t){0};
+	wcDebug1					= 	0.0;
+
+
+	imuSensorDataObj2 		= 	(IMU_SensorData_t){0};
+	imuFuzzyDataObj2 		= 	(IMU_FuzzyData_t){0};
+	imuAngleDataObj2		=   (IMU_AngleData_t){0};
+	imuNormDataObj2 		= 	(IMU_NormData_t){0};
+	imuGaitDataObj2 		= 	(IMU_GaitData_t){0};
+	imuThresDataObj2 		= 	(IMU_ThresData_t){0};
+	wcDebug2					= 	0.0;
+}
+
+/*
+*The function UpdateSensorRawData updates the IMU raw values.
+*/
+static void UpdateSensorRawData(IMU_SensorData_t* imuSensorData, IOIF_6AxisData_t* imu6AxisData, IMU_AttachCase_t imuAttachCase)
+{
+	imuSensorData->accX[0] = imu6AxisData->accX;
+	imuSensorData->accY[0] = imu6AxisData->accY;
+	imuSensorData->gyrZ[0] = imu6AxisData->gyrZ;
+
+	if (imuAttachCase == IMU_LEFT_SAGITAL){
+		imuSensorData->gyrZ[0] = (-1) * (imu6AxisData->gyrZ); 			// For Negative Gyro case (Maybe LEFT case)
+	}
+	else if (imuAttachCase == IMU_RIGHT_SAGITAL){
+		imuSensorData->gyrZ[0] = imu6AxisData->gyrZ; 					// For Positive Gyro case (Maybe RIGHT case)
+	}
+}
+
+/*
+*The function UpdateSensorRawData updates the IMU raw values.
+*/
+static void UpdateSensorRawData2(IMU_SensorData_t* imuSensorData, IOIF_6AxisData2_t* imu6AxisData, IMU_AttachCase_t imuAttachCase)
+{
+	imuSensorData->accX[0] = imu6AxisData->accX;
+	imuSensorData->accY[0] = imu6AxisData->accY;
+	imuSensorData->gyrZ[0] = imu6AxisData->gyrZ;
+
+	if (imuAttachCase == IMU_LEFT_SAGITAL){
+		imuSensorData->gyrZ[0] = (-1) * (imu6AxisData->gyrZ); 			// For Negative Gyro case (Maybe LEFT case)
+	}
+	else if (imuAttachCase == IMU_RIGHT_SAGITAL){
+		imuSensorData->gyrZ[0] = imu6AxisData->gyrZ; 					// For Positive Gyro case (Maybe RIGHT case)
+	}
+}
+
+/*
+ *Function to execute the time-varying complementary filter (with Fuzzy Logic - wc)
+*/
+static void RunTvcfFilter(IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuAngleData, IMU_FuzzyData_t* imuFuzzyData, float samplingPeriod, IMU_AttachCase_t imuAttachCase)
+{
+	/* Apply time-varying complementary filter on the sensor data using fuzzy logic(wc) and update the thigh angle parameters */
+	IMU_RunTVCF(imuSensorData, imuAngleData, imuFuzzyData->wc, samplingPeriod, imuAttachCase);
+
+	/* Update the unfiltered thigh angle to be the same as the filtered thigh angle */
+	imuAngleData->degTvcf[0] = imuAngleData->degTvcfFiltered;
+	imuAngleData->velRaw[0] = (imuAngleData->degTvcf[0] - imuAngleData->degTvcf[1]) / IMU_CONTROL_PERIOD;
+}
+
+/*
+ *Function to select finally used deg&vel value before filtering
+*/
+static void SetUsedDegVel(IMU_AngleData_t* imuAngleData)
+{
+	imuAngleData->degFinal = imuAngleData->degTvcf[0];
+	imuAngleData->velFinal = imuAngleData->velRaw[0];
+
+	imuAngleData->degFinal = imuAngleData->degFinal - imuAngleData->initAngle;
+}
+
+/* Total Algorithm Function */
+static int RunIMU(void)
+{
+	err1 = IOIF_Get6AxisValue(&mpu6050DataObj1);
+	err2 = IOIF_Get6AxisValue2(&mpu6050DataObj2);
+
+	if (err1 != 0){
+		errSum1++;
+	}
+	if (err2 != 0){
+		errSum2++;
+	}
+
+	return 0;
+}
+
+static int RunTotalIMUAlgorithm(void)
+{
+	IMU_UpdateBuffer(&imuSensorDataObj1, &imuAngleDataObj1, &imuGaitDataObj1, &imuNormDataObj1);
+	IMU_UpdateBuffer(&imuSensorDataObj2, &imuAngleDataObj2, &imuGaitDataObj2, &imuNormDataObj2);
+
+	err1 = IOIF_Get6AxisValue(&mpu6050DataObj1);
+	err2 = IOIF_Get6AxisValue2(&mpu6050DataObj2);
+
+	UpdateSensorRawData(&imuSensorDataObj1, &mpu6050DataObj1, ATTACH_CASE_SEL_1);
+	UpdateSensorRawData2(&imuSensorDataObj2, &mpu6050DataObj2, ATTACH_CASE_SEL_2);
+
+	IMU_CalculateFuzzyInput(&imuSensorDataObj1, &imuFuzzyDataObj1);
+	IMU_CalculateFuzzyInput(&imuSensorDataObj2, &imuFuzzyDataObj2);
+
+	wcDebug1 = IMU_CalculateFuzzyWc(&imuFuzzyDataObj1);
+	wcDebug2 = IMU_CalculateFuzzyWc(&imuFuzzyDataObj2);
+
+	RunTvcfFilter(&imuSensorDataObj1, &imuAngleDataObj1, &imuFuzzyDataObj1, IMU_CONTROL_PERIOD, ATTACH_CASE_SEL_1);
+	RunTvcfFilter(&imuSensorDataObj2, &imuAngleDataObj2, &imuFuzzyDataObj2, IMU_CONTROL_PERIOD, ATTACH_CASE_SEL_2);
+
+	SetUsedDegVel(&imuAngleDataObj1);
+	SetUsedDegVel(&imuAngleDataObj2);
+
+	return 0;
+}
+
+/* End of Private Functions */
 /* USER CODE END 4 */
 
 /* MPU Configuration */
