@@ -505,10 +505,8 @@ static void RunTvcfFilter(IMU_SensorData_t* imuSensorData, IMU_AngleData_t* imuA
 */
 static void SetUsedDegVel(IMU_AngleData_t* imuAngleData)
 {
-	imuAngleData->degFinal = imuAngleData->degTvcf[0];
+	imuAngleData->degFinal = imuAngleData->degTvcf[0] - imuAngleData->initAngle;
 	imuAngleData->velFinal = imuAngleData->velRaw[0];
-
-	imuAngleData->degFinal = imuAngleData->degFinal - imuAngleData->initAngle;
 }
 
 /* Total Algorithm Function */
