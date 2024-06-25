@@ -36,6 +36,8 @@
 #include "ioif_mpu6050.h"
 #include "ioif_mpu6050_second.h"
 #include "imu_algorithms.h"
+
+#include "ioif_bmp280.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -108,7 +110,7 @@ static IMU_ThresData_t		imuThresDataObj1;
 
 static float wcDebug1 = 0.0;
 
-
+static uint32_t breakRT = 0;
 // For 2nd IMU - I2C3 //
 IMU_GaitData_t		imuGaitDataObj2;
 IMU_AngleData_t 	imuAngleDataObj2;
@@ -121,6 +123,11 @@ static IMU_NormData_t 		imuNormDataObj2;
 static IMU_ThresData_t		imuThresDataObj2;
 
 static float wcDebug2 = 0.0;
+
+
+
+/* For BPS */
+IOIF_BPSData_t bmp280DataObj;
 
 /* USER CODE END 0 */
 
@@ -169,6 +176,7 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   MX_I2C3_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   CoreDebug->DEMCR &= ~CoreDebug_DEMCR_TRCENA_Msk;
@@ -178,23 +186,28 @@ int main(void)
   DWT->CYCCNT = 0;
 
   /* Initialize the IMUs */
-  IOIF_Init6Axis(&hi2c2);
-  IOIF_Init6Axis2(&hi2c3);
-
-  /* For IMU Algorithms */
-  /* Initial Setting for the IMU */
-  ATTACH_CASE_SEL_1 = IMU_LEFT_SAGITAL;
-  ATTACH_CASE_SEL_2 = IMU_LEFT_SAGITAL;
-
-  /* Reset and Initial setting */
-  ResetDataObj();
-  InitValueSetting(&imuFuzzyDataObj1, &imuNormDataObj1, &imuGaitDataObj1, &imuThresDataObj1);
-  InitValueSetting(&imuFuzzyDataObj2, &imuNormDataObj2, &imuGaitDataObj2, &imuThresDataObj2);
-
-  /* Get initial angle at Standing state */
-  GetInitialAngle_IMU(&mpu6050DataObj1, &imuSensorDataObj1, &imuAngleDataObj1, &imuNormDataObj1, ATTACH_CASE_SEL_1);
-  GetInitialAngle_IMU2(&mpu6050DataObj2, &imuSensorDataObj2, &imuAngleDataObj2, &imuNormDataObj2, ATTACH_CASE_SEL_2);
+//  IOIF_Init6Axis(&hi2c2);
+//  IOIF_Init6Axis2(&hi2c3);
+//
+//  /* For IMU Algorithms */
+//  /* Initial Setting for the IMU */
+//  ATTACH_CASE_SEL_1 = IMU_LEFT_SAGITAL;
+//  ATTACH_CASE_SEL_2 = IMU_LEFT_SAGITAL;
+//
+//  /* Reset and Initial setting */
+//  ResetDataObj();
+//  InitValueSetting(&imuFuzzyDataObj1, &imuNormDataObj1, &imuGaitDataObj1, &imuThresDataObj1);
+//  InitValueSetting(&imuFuzzyDataObj2, &imuNormDataObj2, &imuGaitDataObj2, &imuThresDataObj2);
+//
+//  /* Get initial angle at Standing state */
+//  GetInitialAngle_IMU(&mpu6050DataObj1, &imuSensorDataObj1, &imuAngleDataObj1, &imuNormDataObj1, ATTACH_CASE_SEL_1);
+//  GetInitialAngle_IMU2(&mpu6050DataObj2, &imuSensorDataObj2, &imuAngleDataObj2, &imuNormDataObj2, ATTACH_CASE_SEL_2);
   /* ------------------------------------------------------------------------------------------------------------------ */
+
+  /* Initialize the BPS */
+  IOIF_InitBPS(&hi2c1);
+
+
 
   /* Start the TIMER INTERRUPT */
   HAL_TIM_Base_Start_IT(&htim1);
@@ -302,7 +315,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		/* Choose the Function you want to RUN */
 //		RunIMU();
-		RunTotalIMUAlgorithm();
+//		RunTotalIMUAlgorithm();
+		IOIF_GetBPSValue(&bmp280DataObj);
 		/* ----------------------------------- */
 
 		if (msTime == 1000){
@@ -313,6 +327,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		/* Code End */
 		codeTime = DWT->CYCCNT/160;
 		msTime++;
+
+		if (codeTime > 1000){
+			breakRT++;
+		}
 	}
 }
 
@@ -532,6 +550,12 @@ static int RunTotalIMUAlgorithm(void)
 
 	err1 = IOIF_Get6AxisValue(&mpu6050DataObj1);
 	err2 = IOIF_Get6AxisValue2(&mpu6050DataObj2);
+	if (err1 != 0){
+		errSum1++;
+	}
+	if (err2 != 0){
+		errSum2++;
+	}
 
 	UpdateSensorRawData(&imuSensorDataObj1, &mpu6050DataObj1, ATTACH_CASE_SEL_1);
 	UpdateSensorRawData2(&imuSensorDataObj2, &mpu6050DataObj2, ATTACH_CASE_SEL_2);

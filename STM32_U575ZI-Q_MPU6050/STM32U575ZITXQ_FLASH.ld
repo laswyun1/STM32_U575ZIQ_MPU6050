@@ -151,8 +151,11 @@ SECTIONS
   	. = ABSOLUTE(0x28000000);
 
     /* Two MPU6050 */
-  	*(.i2c2RxBuff)
+ 	*(.i2c2RxBuff)
   	*(.i2c3RxBuff)
+ 
+  	/* One BMP280 */
+  	*(.i2c4RxBuff)
 
   } >SRAM4
   /********************************************************************/
