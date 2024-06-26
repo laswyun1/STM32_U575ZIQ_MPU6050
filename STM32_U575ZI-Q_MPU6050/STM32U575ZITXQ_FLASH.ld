@@ -150,6 +150,9 @@ SECTIONS
   {
   	. = ABSOLUTE(0x28000000);
 
+  	/* One VL53L0X */
+  	*(.i2c1RxBuff)
+
     /* Two MPU6050 */
  	*(.i2c2RxBuff)
   	*(.i2c3RxBuff)

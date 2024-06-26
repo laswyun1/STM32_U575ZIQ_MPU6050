@@ -38,6 +38,7 @@
 #include "imu_algorithms.h"
 
 #include "ioif_bmp280.h"
+#include "ioif_vl53l0x.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -129,6 +130,11 @@ static float wcDebug2 = 0.0;
 /* For BPS */
 IOIF_BPSData_t bmp280DataObj;
 
+
+/* For TOF */
+IOIF_TOFData_t vl53l0xDataObj;
+
+
 /* USER CODE END 0 */
 
 /**
@@ -205,8 +211,11 @@ int main(void)
   /* ------------------------------------------------------------------------------------------------------------------ */
 
   /* Initialize the BPS */
-  IOIF_InitBPS(&hi2c1);
+//  IOIF_InitBPS(&hi2c1);
 
+  /* Initialize the TOF */
+  IOIF_InitTOF(&hi2c1);
+  HAL_Delay(2000);
 
 
   /* Start the TIMER INTERRUPT */
@@ -316,12 +325,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		/* Choose the Function you want to RUN */
 //		RunIMU();
 //		RunTotalIMUAlgorithm();
-		IOIF_GetBPSValue(&bmp280DataObj);
+
+		/* For BPS */
+//		IOIF_GetBPSValue(&bmp280DataObj);
+
+		/* For TOF */
+//		IOIF_GetTOFValue(&vl53l0xDataObj);
+
 		/* ----------------------------------- */
 
 		if (msTime == 1000){
 			msTime = 0;
 			totalElapsedTime++;
+
+			IOIF_GetTOFValue(&vl53l0xDataObj);
 		}
 
 		/* Code End */
