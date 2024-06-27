@@ -38,7 +38,9 @@
 #include "imu_algorithms.h"
 
 #include "ioif_bmp280.h"
-#include "ioif_vl53l0x.h"
+//#include "ioif_vl53l0x.h"
+
+#include "VL53L0X.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -132,8 +134,8 @@ IOIF_BPSData_t bmp280DataObj;
 
 
 /* For TOF */
-IOIF_TOFData_t vl53l0xDataObj;
-
+//IOIF_TOFData_t vl53l0xDataObj;
+uint16_t distance;
 
 /* USER CODE END 0 */
 
@@ -150,7 +152,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+   HAL_Init();
 
   /* MPU Configuration--------------------------------------------------------*/
   MPU_Config();
@@ -214,9 +216,22 @@ int main(void)
 //  IOIF_InitBPS(&hi2c1);
 
   /* Initialize the TOF */
-  IOIF_InitTOF(&hi2c1);
-  HAL_Delay(2000);
+//  IOIF_InitTOF(&hi2c1);
 
+
+
+  /* Using Open Source of TOF */
+/*
+   // Initialise the VL53L0X
+   statInfo_t_VL53L0X distanceStr;
+   initVL53L0X(1, &hi2c1);
+
+	// Configure the sensor
+	setSignalRateLimit(200);
+	setVcselPulsePeriod(VcselPeriodPreRange, 10);
+	setVcselPulsePeriod(VcselPeriodFinalRange, 14);
+	setMeasurementTimingBudget(300 * 1000UL);
+*/
 
   /* Start the TIMER INTERRUPT */
   HAL_TIM_Base_Start_IT(&htim1);
@@ -227,7 +242,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
+//		distance = readRangeSingleMillimeters(&distanceStr);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -338,7 +353,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			msTime = 0;
 			totalElapsedTime++;
 
-			IOIF_GetTOFValue(&vl53l0xDataObj);
+//			IOIF_GetTOFValue(&vl53l0xDataObj);
 		}
 
 		/* Code End */

@@ -49,6 +49,7 @@
 // static uint8_t ReadReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size);
 static uint8_t WriteReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size);
 static uint8_t SetReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size);
+static uint8_t GetReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size);
 
 static void CalValues(VL53L0XObj_t* vl53l0xObj);
 
@@ -79,6 +80,7 @@ uint8_t VL53L0X_SetIoctx(VL53L0XObj_t* vl53l0xObj, VL53L0XIOctx_t* vl53l0xIOctx)
     vl53l0xObj->io.ReadReg    = vl53l0xIOctx->ReadReg;
     vl53l0xObj->io.WriteReg   = vl53l0xIOctx->WriteReg;
     vl53l0xObj->io.Wait       = vl53l0xIOctx->Wait;
+    vl53l0xObj->io.ReadRegNoDMA    = vl53l0xIOctx->ReadRegNoDMA;
 
     return VL53L0X_STATUS_OK;
 }
@@ -104,19 +106,45 @@ uint8_t VL53L0X_Init(VL53L0XObj_t* vl53l0xObj)
 
     // Configure control registers if the device is ready
     if (status == VL53L0X_STATUS_OK){
-        uint8_t conf_1 = 0x01;
-        status = SetReg(vl53l0xObj, 0x80, &conf_1, VL53L0X_CONTROL_SIZE);
-        uint8_t conf_2 = 0x01;
-        status = SetReg(vl53l0xObj, 0xFF, &conf_2, VL53L0X_CONTROL_SIZE);
-        uint8_t conf_3 = 0x00;
-        status = SetReg(vl53l0xObj, 0x00, &conf_3, VL53L0X_CONTROL_SIZE);
 
-        uint8_t conf_4 = 0x01;
+    	/* (1) Switch to 2V8 mode (Default : 1V8 mode) */
+    	uint8_t tempArr1[1] = {0};
+    	status = GetReg(vl53l0xObj, 0x89, tempArr1, VL53L0X_CONTROL_SIZE);
+
+    	uint8_t conf_0 = (tempArr1[0] | 0x01);
+    	status = SetReg(vl53l0xObj, 0x89, &conf_0, VL53L0X_CONTROL_SIZE);
+
+
+    	/* (2) Set I2C Standard mode */
+        uint8_t conf_1 = 0x00;
+        status = SetReg(vl53l0xObj, 0x88, &conf_1, VL53L0X_CONTROL_SIZE);
+
+        uint8_t conf_2 = 0x01;
+        status = SetReg(vl53l0xObj, 0x80, &conf_2, VL53L0X_CONTROL_SIZE);
+        uint8_t conf_3 = 0x01;
+        status = SetReg(vl53l0xObj, 0xFF, &conf_3, VL53L0X_CONTROL_SIZE);
+        uint8_t conf_4 = 0x00;
         status = SetReg(vl53l0xObj, 0x00, &conf_4, VL53L0X_CONTROL_SIZE);
-        uint8_t conf_5 = 0x00;
-        status = SetReg(vl53l0xObj, 0xFF, &conf_5, VL53L0X_CONTROL_SIZE);
+
+
+        uint8_t tempArr2[1] = {0};
+        status = GetReg(vl53l0xObj, 0x91, tempArr2, VL53L0X_CONTROL_SIZE);
+
+
+        uint8_t conf_5 = 0x01;
+        status = SetReg(vl53l0xObj, 0x00, &conf_5, VL53L0X_CONTROL_SIZE);
         uint8_t conf_6 = 0x00;
-        status = SetReg(vl53l0xObj, 0x80, &conf_6, VL53L0X_CONTROL_SIZE);
+        status = SetReg(vl53l0xObj, 0xFF, &conf_6, VL53L0X_CONTROL_SIZE);
+        uint8_t conf_7 = 0x00;
+        status = SetReg(vl53l0xObj, 0x80, &conf_7, VL53L0X_CONTROL_SIZE);
+
+
+        /* (3) Disable SIGNAL_RATE_MSRC (bit 1) and SIGNAL_RATE_PRE_RANGE (bit 4) limit checks */
+    	uint8_t tempArr3[1] = {0};
+    	status = GetReg(vl53l0xObj, 0x60, tempArr3, VL53L0X_CONTROL_SIZE);
+
+    	uint8_t conf_8 = (tempArr3[0] | 0x12);
+    	status = SetReg(vl53l0xObj, 0x60, &conf_8, VL53L0X_CONTROL_SIZE);
     }
 
     /* Change the device address to read */
@@ -187,6 +215,11 @@ static uint8_t WriteReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, 
     return vl53l0xObj->io.WriteReg(vl53l0xObj->devAddr, reg, pData, size);
 }
 
+static uint8_t ReadRegNoDMA(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size)
+{
+    return vl53l0xObj->io.ReadRegNoDMA(vl53l0xObj->devAddr, reg, pData, size);
+}
+
 /**
  * @brief Set and verify the specified register of the VL53L0X device.
  * @param vl53l0xObj Pointer to the VL53L0X object.
@@ -203,6 +236,16 @@ static uint8_t SetReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, ui
 
     return status;
 }
+
+static uint8_t GetReg(VL53L0XObj_t* vl53l0xObj, uint16_t reg, uint8_t* pData, uint32_t size)
+{
+	uint8_t status = VL53L0X_STATUS_OK;
+
+    status = ReadRegNoDMA(vl53l0xObj, reg, pData, size);
+
+    return status;
+}
+
 
 /**
  * @brief Scales the raw data from the VL53L0X sensor and assigns it to the appropriate structure members.

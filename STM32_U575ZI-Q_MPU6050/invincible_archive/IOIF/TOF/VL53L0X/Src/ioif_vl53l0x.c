@@ -59,6 +59,8 @@ static uint8_t IsDevReady_TOF(uint16_t devAddr);
 static uint8_t ReadReg_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, uint16_t size);
 static uint8_t WriteReg_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, uint16_t size);
 
+static uint8_t ReadRegNoDMA_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, uint16_t size);
+
 
 /**
  *------------------------------------------------------------
@@ -77,6 +79,7 @@ IOIF_TOFState_t IOIF_InitTOF(I2C_HandleTypeDef* hi2c)
     vl53l0xIOctx.IsDevReady = IsDevReady_TOF;
     vl53l0xIOctx.ReadReg = ReadReg_TOF;
     vl53l0xIOctx.WriteReg = WriteReg_TOF;
+    vl53l0xIOctx.ReadRegNoDMA = ReadRegNoDMA_TOF;
 
     i2cHandle_tof = hi2c;
     // for DMA Read
@@ -147,5 +150,12 @@ static uint8_t ReadReg_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, u
 static uint8_t WriteReg_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, uint16_t size)
 {
 	return HAL_I2C_Mem_Write(i2cHandle_tof, devAddr, regAddr, VL53L0X_CONTROL_SIZE, pData, size, IOIF_VL53L0X_TIMEOUT);
+}
+
+
+// Reads a register from the IMU 6-Axis device using DMA
+static uint8_t ReadRegNoDMA_TOF(uint16_t devAddr, uint16_t regAddr, uint8_t* pData, uint16_t size)
+{
+    return HAL_I2C_Mem_Read(i2cHandle_tof, devAddr, regAddr, VL53L0X_CONTROL_SIZE, pData, size, IOIF_VL53L0X_TIMEOUT);
 }
 

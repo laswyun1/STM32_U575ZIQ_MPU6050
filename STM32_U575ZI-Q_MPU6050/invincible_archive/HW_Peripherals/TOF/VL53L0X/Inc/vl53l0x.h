@@ -46,6 +46,8 @@ typedef uint8_t (*VL53L0X_ReadRegFunc)    (uint16_t, uint16_t, uint8_t*, uint16_
 typedef uint8_t (*VL53L0X_WriteRegFunc)   (uint16_t, uint16_t, uint8_t*, uint16_t);    // DevAddr, RegAddr, Data, DataSize
 typedef uint8_t (*VL53L0X_WaitFunc)       (uint32_t);			                      // ms to Wait
 
+typedef uint8_t (*VL53L0X_ReadRegNoDMAFunc)    (uint16_t, uint16_t, uint8_t*, uint16_t);    // DevAddr, RegAddr, Data, DataSize
+
 // Enumeration for VL53L0X status codes.
 typedef enum _VL53L0XState_t {
     VL53L0X_STATUS_OK = 0,
@@ -62,6 +64,8 @@ typedef struct _VL53L0XIOctx_t {
     VL53L0X_ReadRegFunc    ReadReg;
     VL53L0X_WriteRegFunc   WriteReg;
     VL53L0X_WaitFunc       Wait;
+
+    VL53L0X_ReadRegNoDMAFunc   ReadRegNoDMA;
 } VL53L0XIOctx_t;
 
 // Structure for sensor values
